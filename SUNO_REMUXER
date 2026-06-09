@@ -1,0 +1,231 @@
+# ==============================================================================
+# SYSTEM:        Suno WAV to MP4 Premium Remuxer
+# MODULE:        remuxer.py
+# VERSION:       v1.5 (GitHub Open-Source Release)
+# AUTHOR:        João M. Borges Gouveia
+# LICENSE:       MIT License
+# DESCRIPTION:   High-fidelity audio/image multiplexer utilizing FFmpeg and 
+#                Tkinter with dynamic Windows Explorer targeting upon completion.
+# ==============================================================================
+
+import os
+import sys
+import wave
+import re
+import threading
+import subprocess
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+
+class SunoRemuxerApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("PREMIUM DIGITAL AUDIO - FFmpeg Remuxer v1.5")
+        self.root.geometry("850x400")
+        self.root.resizable(False, False)
+        
+        # Configuração do Tema Escuro de Estúdio
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self.root.configure(bg="#1e1e1e")
+        
+        self.style.configure('.', background="#1e1e1e", foreground="#ffffff")
+        self.style.configure('TLabel', font=('Segoe UI', 10), background="#1e1e1e", foreground="#ffffff")
+        self.style.configure('TButton', font=('Segoe UI', 10, 'bold'), background="#2d2d2d", foreground="#ffffff", borderwidth=1)
+        self.style.map('TButton', background=[('active', '#404040')])
+        self.style.configure('Horizontal.TProgressbar', background='#0078d4', troughcolor='#2d2d2d', borderwidth=0)
+
+        # Configuração de Alto Contraste para os campos de texto (evita conflitos de cor do SO)
+        self.style.configure('TEntry', 
+                             font=('Segoe UI', 10), 
+                             foreground='#ffffff', 
+                             fieldbackground='#2d2d2d', 
+                             insertcolor='#ffffff',
+                             bordercolor='#404040',
+                             lightcolor='#1e1e1e',
+                             darkcolor='#1e1e1e')
+
+        # Variáveis de controlo de fluxo
+        self.audio_path = tk.StringVar()
+        self.image_path = tk.StringVar()
+        self.output_path = tk.StringVar()
+        self.status_text = tk.StringVar(value="Dá um clique direto em qualquer campo para abrir o seletor...")
+        self.percentage_text = tk.StringVar(value="0%")
+        
+        self.create_widgets()
+        
+    def create_widgets(self):
+        title_lbl = tk.Label(self.root, text="Suno WAV to MP4 Premium Remuxer (v1.5 - Auto-Explorer)", font=('Segoe UI', 14, 'bold'), bg="#1e1e1e", fg="#0078d4")
+        title_lbl.pack(pady=15)
+        
+        main_frame = ttk.Frame(self.root, padding=10)
+        main_frame.pack(fill='x', padx=20)
+        
+        # Entrada: Áudio WAV
+        ttk.Label(main_frame, text="Áudio Original (WAV):").grid(row=0, column=0, sticky='w', bandwidth=8)
+        self.entry_audio = ttk.Entry(main_frame, textvariable=self.audio_path, width=85, style='TEntry')
+        self.entry_audio.grid(row=0, column=1, padx=10, pady=8)
+        self.entry_audio.bind("<Button-1>", self.browse_audio)
+        
+        # Entrada: Imagem de Capa
+        ttk.Label(main_frame, text="Imagem de Capa (Art):").grid(row=1, column=0, sticky='w', pady=8)
+        self.entry_image = ttk.Entry(main_frame, textvariable=self.image_path, width=85, style='TEntry')
+        self.entry_image.grid(row=1, column=1, padx=10, pady=8)
+        self.entry_image.bind("<Button-1>", self.browse_image)
+        
+        # Saída: Destino MP4
+        ttk.Label(main_frame, text="Destino do Vídeo (MP4):").grid(row=2, column=0, sticky='w', pady=8)
+        self.entry_output = ttk.Entry(main_frame, textvariable=self.output_path, width=85, style='TEntry')
+        self.entry_output.grid(row=2, column=1, padx=10, pady=8)
+        self.entry_output.bind("<Button-1>", self.browse_output)
+        
+        ttk.Separator(self.root, orient='horizontal').pack(fill='x', padx=20, pady=15)
+        
+        # Painel de Progresso e Métricas
+        status_frame = ttk.Frame(self.root)
+        status_frame.pack(fill='x', padx=25)
+        
+        self.lbl_status = tk.Label(status_frame, textvariable=self.status_text, font=('Segoe UI', 9, 'italic'), bg="#1e1e1e", fg="#aaaaaa", anchor='w')
+        self.lbl_status.pack(side='left')
+        
+        self.lbl_percent = tk.Label(status_frame, textvariable=self.percentage_text, font=('Segoe UI', 10, 'bold'), bg="#1e1e1e", fg="#0078d4", anchor='e')
+        self.lbl_percent.pack(side='right')
+        
+        self.progress_bar = ttk.Progressbar(self.root, orient="horizontal", mode="determinate", style="Horizontal.TProgressbar")
+        self.progress_bar.pack(fill='x', padx=25, pady=5)
+        
+        self.btn_processar = ttk.Button(self.root, text="💥 EXECUTAR TRANSPLANTE DIGITAL (ENTER)", command=self.start_processing_thread)
+        self.btn_processar.pack(pady=12)
+
+    def browse_audio(self, event=None):
+        filename = filedialog.askopenfilename(filetypes=[("Áudio WAV", "*.wav")])
+        if filename:
+            self.audio_path.set(filename)
+            if not self.output_path.get():
+                base, _ = os.path.splitext(filename)
+                self.output_path.set(base + "_PREMIUM.mp4")
+        self.root.focus_set()
+        return "break"
+
+    def browse_image(self, event=None):
+        filename = filedialog.askopenfilename(filetypes=[("Imagens de Capa", "*.jpg *.jpeg *.png")])
+        if filename:
+            self.image_path.set(filename)
+        self.root.focus_set()
+        return "break"
+
+    def browse_output(self, event=None):
+        filename = filedialog.asksaveasfilename(defaultextension=".mp4", filetypes=[("Vídeo MP4", "*.mp4")])
+        if filename:
+            self.output_path.set(filename)
+        self.root.focus_set()
+        return "break"
+
+    def get_wav_duration(self, filepath):
+        try:
+            with wave.open(filepath, 'rb') as f:
+                frames = f.getnframes()
+                rate = f.getframerate()
+                return frames / float(rate)
+        except Exception:
+            return None
+
+    def start_processing_thread(self):
+        if not self.audio_path.get() or not self.image_path.get() or not self.output_path.get():
+            messagebox.showerror("Erro de Sintaxe", "Fosca-se, João! Preenche os campos antes de avançar!")
+            return
+            
+        self.btn_processar.config(state='disabled')
+        self.status_text.set("A analisar metadados do ficheiro WAV...")
+        
+        # Despacha o processamento para uma thread secundária para não congelar o GUI
+        threading.Thread(target=self.run_ffmpeg, daemon=True).start()
+
+    def run_ffmpeg(self):
+        audio = self.audio_path.get()
+        image = self.image_path.get()
+        output = self.output_path.get()
+        
+        duration = self.get_wav_duration(audio)
+        if not duration:
+            self.root.after(0, lambda: messagebox.showerror("Erro de Arquitetura", "Não foi possível ler a duração do WAV!"))
+            self.root.after(0, lambda: self.btn_processar.config(state='normal'))
+            return
+
+        # Pipeline de comandos FFmpeg - Copia o stream de áudio nativo sem perdas (lossless)
+        comando = [
+            'ffmpeg', '-y',
+            '-loop', '1',
+            '-i', image,
+            '-i', audio,
+            '-c:v', 'libx264',
+            '-tune', 'stillimage',
+            '-c:a', 'copy',
+            '-pix_fmt', 'yuv420p',
+            '-shortest',
+            '-progress', 'pipe:1',
+            output
+        ]
+        
+        try:
+            startupinfo = None
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                
+            processo = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, startupinfo=startupinfo)
+            
+            time_regex = re.compile(r"out_time_ms=(\d+)")
+            duration_ms = duration * 1000000
+            
+            while True:
+                line = processo.stdout.readline()
+                if not line:
+                    break
+                
+                match = time_regex.search(line)
+                if match:
+                    current_time_ms = int(match.group(1))
+                    percentage = (current_time_ms / duration_ms) * 100
+                    percentage = min(max(percentage, 0), 100)
+                    self.root.after(0, self.update_progress, percentage)
+            
+            processo.wait()
+            
+            if processo.returncode == 0:
+                self.root.after(0, self.processing_done, True, output)
+            else:
+                self.root.after(0, self.processing_done, False, output)
+                
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("Erro Desconhecido", f"Falha na execução: {str(e)}"))
+            self.root.after(0, lambda: self.btn_processar.config(state='normal'))
+
+    def update_progress(self, val):
+        self.progress_bar['value'] = val
+        self.percentage_text.set(f"{int(val)}%")
+        self.status_text.set(f"A processar fluxo a {int(val)}%... Transplante limpo!")
+
+    def processing_done(self, sucesso, output_file):
+        self.btn_processar.config(state='normal')
+        if sucesso:
+            self.progress_bar['value'] = 100
+            self.percentage_text.set("100%")
+            self.status_text.set("Concluído com sucesso absoluto!")
+            
+            messagebox.showinfo("Sucesso Total", f"O teu MP4 Premium foi gerado com qualidade cópia de estúdio!\n\nFicheiro: {os.path.basename(output_file)}")
+            
+            # Abre o Explorador do Windows focado diretamente no ficheiro gerado
+            try:
+                target_path = os.path.normpath(output_file)
+                subprocess.Popen(f'explorer /select,"{target_path}"')
+            except Exception:
+                pass
+        else:
+            self.status_text.set("Erro na execução do FFmpeg.")
+            messagebox.showerror("Erro de Processamento", "O FFmpeg abortou a missão.")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = SunoRemuxerApp(root)
+    root.mainloop()
